@@ -19,7 +19,10 @@ It is built for creator workflows where a finished video is assembled from many 
 - Prompt/brief export for external planning or generation tools
 - Native video review player using `AVPlayerView`
 - Theater mode and full-screen playback for better review
-- Timecode review marks with category, action, duration, speed, volume, and note fields
+- Large hero review player with J/K/L shuttle controls
+- Timecode revision cards for video, audio, speed, trim, title, and remove-clip requests
+- Dynamic card controls for notes, speed percentages, audio volume changes, trim in/out points, and title fixes
+- Submit workflow that saves a Markdown/JSON revision packet and copies the Markdown packet to the clipboard
 - Exportable review package in JSON and Markdown
 - Assembly settings export for local post-production
 - FFmpeg-based master assembly helper with hard video cuts, soft audio fades, and loudness normalization
@@ -106,9 +109,12 @@ qa/reviewer-notes
 1. Choose or create a project folder.
 2. Choose a master video.
 3. Watch in normal, theater, or full-screen mode.
-4. Add marks at exact timecodes when something needs attention.
-5. Export review notes for retakes, trims, audio fixes, speed fixes, or replacement clips.
-6. Assemble or reframe only after the project passes review.
+4. Use `J` for reverse shuttle, `K` to pause, and `L` for forward shuttle. Repeated `J` or `L` presses increase shuttle speed.
+5. Pause on a trouble spot and press `Mark`.
+6. Choose the revision type: video problem, audio problem, speed ramp, trim clip start, trim clip end, title fix, or remove clip.
+7. Add notes or use the card-specific controls in the revision panel.
+8. Press `SUBMIT` to save the full revision packet and copy it to the clipboard for editor or agent handoff.
+9. Assemble or reframe only after the project passes review.
 
 ## Local CLI: Reframer
 

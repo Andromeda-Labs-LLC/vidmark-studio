@@ -3,7 +3,7 @@ import Foundation
 
 @MainActor
 final class StudioStore: ObservableObject {
-    @Published var selectedSection: StudioSection = .episode
+    @Published var selectedSection: StudioSection = .review
     @Published var sidecar = EpisodeSidecar()
     @Published var assembly = AssemblySettings()
     @Published var episodeFolderURL: URL?
@@ -72,29 +72,45 @@ final class StudioStore: ObservableObject {
     }
 
     func exportReviewPackage() {
-        guard let episodeFolderURL else {
-            status = "Choose or create an episode folder first."
-            return
-        }
-        let reviewDir = episodeFolderURL.appendingPathComponent("qa/reviewer-notes", isDirectory: true)
         do {
-            try FileManager.default.createDirectory(at: reviewDir, withIntermediateDirectories: true)
-            let package = ReviewPackage(
-                episodeID: sidecar.episodeID,
-                workingTitle: sidecar.workingTitle,
-                masterVideo: masterVideoURL?.path ?? "",
-                generatedAt: Date(),
-                reviewMarks: reviewMarks.sorted { $0.timecodeSeconds < $1.timecodeSeconds },
-                assemblySettings: assembly
-            )
-            let jsonURL = reviewDir.appendingPathComponent("\(sidecar.episodeID)_review-marks.json")
-            let mdURL = reviewDir.appendingPathComponent("\(sidecar.episodeID)_review-marks.md")
-            try Self.encoder.encode(package).write(to: jsonURL)
-            try package.markdown.write(to: mdURL, atomically: true, encoding: .utf8)
+            _ = try writeReviewPackage()
             status = "Exported reviewer notes package."
         } catch {
             status = "Could not export review package: \(error.localizedDescription)"
         }
+    }
+
+    func submitReviewPackage() {
+        do {
+            let result = try writeReviewPackage()
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(result.markdown, forType: .string)
+            status = "Submitted revision packet. It is saved and copied to the clipboard."
+        } catch {
+            status = "Could not submit review package: \(error.localizedDescription)"
+        }
+    }
+
+    private func writeReviewPackage() throws -> (jsonURL: URL, markdownURL: URL, markdown: String) {
+        guard let episodeFolderURL else {
+            status = "Choose or create an episode folder first."
+            throw StudioStoreError.missingEpisodeFolder
+        }
+        let reviewDir = episodeFolderURL.appendingPathComponent("qa/reviewer-notes", isDirectory: true)
+        try FileManager.default.createDirectory(at: reviewDir, withIntermediateDirectories: true)
+        let package = ReviewPackage(
+            episodeID: sidecar.episodeID,
+            workingTitle: sidecar.workingTitle,
+            masterVideo: masterVideoURL?.path ?? "",
+            generatedAt: Date(),
+            reviewMarks: reviewMarks.sorted { $0.timecodeSeconds < $1.timecodeSeconds },
+            assemblySettings: assembly
+        )
+        let jsonURL = reviewDir.appendingPathComponent("\(sidecar.episodeID)_review-marks.json")
+        let mdURL = reviewDir.appendingPathComponent("\(sidecar.episodeID)_review-marks.md")
+        try Self.encoder.encode(package).write(to: jsonURL)
+        try package.markdown.write(to: mdURL, atomically: true, encoding: .utf8)
+        return (jsonURL, mdURL, package.markdown)
     }
 
     func exportAssemblySettings() {
@@ -129,6 +145,11 @@ final class StudioStore: ObservableObject {
 
     func deleteReviewMarks(at offsets: IndexSet) {
         reviewMarks.remove(atOffsets: offsets)
+    }
+
+    func deleteReviewMark(id: ReviewMark.ID) {
+        reviewMarks.removeAll { $0.id == id }
+        status = "Removed revision mark."
     }
 
     func chooseEpisodeFolder() {
@@ -191,6 +212,16 @@ final class StudioStore: ObservableObject {
     }
 }
 
+enum StudioStoreError: LocalizedError {
+    case missingEpisodeFolder
+
+    var errorDescription: String? {
+        switch self {
+        case .missingEpisodeFolder: "Choose or create an episode folder first."
+        }
+    }
+}
+
 struct ReviewPackage: Codable {
     var episodeID: String
     var workingTitle: String
@@ -201,7 +232,7 @@ struct ReviewPackage: Codable {
 
     var markdown: String {
         var lines: [String] = [
-            "# Review Marks: \(episodeID)",
+            "# Revision Request Packet: \(episodeID)",
             "",
             "- Title: \(workingTitle)",
             "- Master video: `\(masterVideo)`",
@@ -215,15 +246,26 @@ struct ReviewPackage: Codable {
             "",
             "## Marks",
             "",
-            "| Timecode | Duration | Category | Action | Speed | Volume | Note |",
-            "| --- | ---: | --- | --- | ---: | ---: | --- |"
+            "| # | Timecode | Type | Trim In | Trim Out | Speed | Volume | Replacement Title | Notes |",
+            "| ---: | --- | --- | --- | --- | ---: | ---: | --- | --- |"
         ]
-        for mark in reviewMarks {
+        for (index, mark) in reviewMarks.enumerated() {
             lines.append(
-                "| \(TimecodeFormatter.string(mark.timecodeSeconds)) | \(String(format: "%.1f", mark.durationSeconds))s | \(mark.category.title) | \(mark.action.title) | \(String(format: "%.2fx", mark.speedMultiplier)) | \(String(format: "%.1f dB", mark.volumeDeltaDb)) | \(mark.note.replacingOccurrences(of: "\n", with: " ")) |"
+                "| \(index + 1) | \(TimecodeFormatter.string(mark.timecodeSeconds)) | \(mark.revisionType.title) | \(optionalTimecode(mark.trimInSeconds)) | \(optionalTimecode(mark.trimOutSeconds)) | \(mark.speedPercent)% | \(String(format: "%.1f dB", mark.volumeDeltaDb)) | \(sanitize(mark.replacementTitle)) | \(sanitize(mark.note)) |"
             )
         }
         return lines.joined(separator: "\n") + "\n"
+    }
+
+    private func optionalTimecode(_ seconds: Double?) -> String {
+        guard let seconds else { return "" }
+        return TimecodeFormatter.string(seconds)
+    }
+
+    private func sanitize(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "|", with: "/")
     }
 }
 

@@ -1,51 +1,49 @@
 import Foundation
 
-enum ReviewCategory: String, Codable, CaseIterable, Identifiable {
-    case videoArtifact
-    case audioIssue
-    case tooSlow
-    case tooLoud
-    case trim
-    case thumbnail
-    case other
+enum ReviewRevisionType: String, Codable, CaseIterable, Identifiable {
+    case videoProblem
+    case audioProblem
+    case speedRamp
+    case trimClipStart
+    case trimClipEnd
+    case titleFix
+    case removeClip
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .videoArtifact: "Video artifact"
-        case .audioIssue: "Audio issue"
-        case .tooSlow: "Too slow"
-        case .tooLoud: "Too loud"
-        case .trim: "Trim"
-        case .thumbnail: "Thumbnail"
-        case .other: "Other"
+        case .videoProblem: "Video problem"
+        case .audioProblem: "Audio problem"
+        case .speedRamp: "Speed ramp"
+        case .trimClipStart: "Trim clip start"
+        case .trimClipEnd: "Trim clip end"
+        case .titleFix: "Title fix"
+        case .removeClip: "Remove clip"
         }
     }
-}
 
-enum ReviewAction: String, Codable, CaseIterable, Identifiable {
-    case replaceClip
-    case replaceAudio
-    case lowerVolume
-    case trimStart
-    case trimEnd
-    case modestSpeedCorrection
-    case regenerateThumbnail
-    case noteOnly
-
-    var id: String { rawValue }
-
-    var title: String {
+    var detail: String {
         switch self {
-        case .replaceClip: "Replace clip"
-        case .replaceAudio: "Replace audio"
-        case .lowerVolume: "Lower volume"
-        case .trimStart: "Trim start"
-        case .trimEnd: "Trim end"
-        case .modestSpeedCorrection: "Speed +10-20%"
-        case .regenerateThumbnail: "New thumbnail"
-        case .noteOnly: "Note only"
+        case .videoProblem: "Flag visual artifacts, odd motion, bad framing, or malformed imagery."
+        case .audioProblem: "Flag harsh, missing, creepy, loud, or mismatched sound."
+        case .speedRamp: "Request a natural percentage speed change for this section."
+        case .trimClipStart: "Mark an in/out range to cut from the beginning side of a clip."
+        case .trimClipEnd: "Mark an in/out range to cut from the ending side of a clip."
+        case .titleFix: "Request a title, callout, typo, placement, or timing correction."
+        case .removeClip: "Remove the entire clip from the finished assembly."
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .videoProblem: "video.badge.exclamationmark"
+        case .audioProblem: "waveform.badge.exclamationmark"
+        case .speedRamp: "speedometer"
+        case .trimClipStart: "timeline.selection"
+        case .trimClipEnd: "timeline.selection"
+        case .titleFix: "textformat"
+        case .removeClip: "trash"
         }
     }
 }
@@ -53,13 +51,32 @@ enum ReviewAction: String, Codable, CaseIterable, Identifiable {
 struct ReviewMark: Identifiable, Codable, Equatable {
     var id = UUID()
     var timecodeSeconds: Double
-    var durationSeconds: Double = 5
-    var category: ReviewCategory = .videoArtifact
-    var action: ReviewAction = .replaceClip
+    var revisionType: ReviewRevisionType = .videoProblem
     var note = ""
-    var speedMultiplier: Double = 1.0
-    var volumeDeltaDb: Double = 0
+    var trimInSeconds: Double?
+    var trimOutSeconds: Double?
+    var speedPercent: Int = 100
+    var volumeDeltaDb: Double = -3
+    var replacementTitle = ""
     var createdAt = Date()
+
+    init(timecodeSeconds: Double, revisionType: ReviewRevisionType = .videoProblem) {
+        self.timecodeSeconds = timecodeSeconds
+        self.revisionType = revisionType
+
+        switch revisionType {
+        case .trimClipStart:
+            self.trimInSeconds = 0
+            self.trimOutSeconds = timecodeSeconds
+        case .trimClipEnd:
+            self.trimInSeconds = timecodeSeconds
+            self.trimOutSeconds = timecodeSeconds + 2
+        case .speedRamp:
+            self.speedPercent = 120
+        default:
+            break
+        }
+    }
 }
 
 enum TimecodeFormatter {

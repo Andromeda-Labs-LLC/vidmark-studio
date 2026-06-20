@@ -16,7 +16,7 @@ struct VidmarkStudioApp: App {
     var body: some Scene {
         WindowGroup("VIDMARK STUDIO") {
             ContentView()
-                .frame(minWidth: 1180, minHeight: 760)
+                .frame(minWidth: 1380, minHeight: 860)
         }
         .windowStyle(.hiddenTitleBar)
         .commands {

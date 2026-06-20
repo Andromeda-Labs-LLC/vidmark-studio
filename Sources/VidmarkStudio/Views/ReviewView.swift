@@ -5,38 +5,42 @@ struct ReviewView: View {
     @ObservedObject var store: StudioStore
     @StateObject private var clock = PlayerClock()
     @State private var player = AVPlayer()
-    @State private var showMarkSheet = false
+    @State private var showRevisionPicker = false
     @State private var isTheaterMode = false
     @State private var fullScreenTrigger = 0
+    @State private var shuttleDirection = ShuttleDirection.paused
+    @State private var shuttleRate: Float = 1
 
     var body: some View {
         HStack(spacing: 0) {
             reviewDeck
-                .padding(20)
+                .padding(22)
 
             if !isTheaterMode {
                 Divider()
-                marksPanel
-                    .frame(width: 360)
-                    .padding(20)
+                revisionPanel
+                    .frame(width: 430)
+                    .padding(18)
             }
         }
+        .background(StudioTheme.background)
         .onAppear(perform: loadMaster)
         .onChange(of: store.masterVideoURL) {
             loadMaster()
         }
-        .sheet(isPresented: $showMarkSheet) {
-            ReviewMarkSheet(
-                initialTime: clock.currentTime,
-                onSave: { mark in
-                    store.addReviewMark(mark)
+        .sheet(isPresented: $showRevisionPicker) {
+            RevisionTypePickerSheet(
+                timecode: clock.currentTime,
+                onChoose: { type in
+                    store.addReviewMark(ReviewMark(timecodeSeconds: clock.currentTime, revisionType: type))
+                    showRevisionPicker = false
                 }
             )
         }
     }
 
     private var reviewDeck: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             reviewHeader
             videoSurface
             transportControls
@@ -45,45 +49,37 @@ struct ReviewView: View {
     }
 
     private var reviewHeader: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Reviewer Notes")
-                    .font(.system(size: 18, weight: .semibold))
-                Text("Mark timecoded problems for agents to replace, trim, remix, or gently speed-correct.")
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Review")
+                    .font(.system(size: 24, weight: .semibold))
+                Text("Pause on a trouble spot, press Mark, choose the revision type, then submit the edit packet.")
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
 
             Button {
-                store.chooseMasterVideo()
+                store.chooseEpisodeFolder()
             } label: {
-                Label("Choose Master", systemImage: "film")
+                Label("Episode", systemImage: "folder")
             }
 
             Button {
-                store.exportReviewPackage()
+                store.chooseMasterVideo()
             } label: {
-                Label("Export", systemImage: "square.and.arrow.down")
+                Label("Master", systemImage: "film")
             }
-            .disabled(store.reviewMarks.isEmpty)
+            .keyboardShortcut("o")
 
             Button {
                 isTheaterMode.toggle()
             } label: {
                 Label(
                     isTheaterMode ? "Show Marks" : "Theater",
-                    systemImage: isTheaterMode ? "sidebar.right" : "rectangle.expand.vertical"
+                    systemImage: isTheaterMode ? "sidebar.right" : "rectangle.inset.filled"
                 )
             }
-            .disabled(store.masterVideoURL == nil)
-
-            Button {
-                showMarkSheet = true
-            } label: {
-                Label("Add Mark", systemImage: "plus.circle")
-            }
-            .buttonStyle(.borderedProminent)
             .disabled(store.masterVideoURL == nil)
         }
     }
@@ -96,43 +92,74 @@ struct ReviewView: View {
                     systemImage: "film",
                     description: Text("Choose the episode master to begin review.")
                 )
+                .foregroundStyle(.secondary)
             } else {
                 NativeVideoPlayerView(player: player, fullScreenTrigger: fullScreenTrigger)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .frame(minHeight: isTheaterMode ? 620 : 430)
+        .frame(minHeight: isTheaterMode ? 700 : 560)
         .background(.black)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(.white.opacity(0.08))
+                .strokeBorder(.white.opacity(0.10))
         )
+        .shadow(color: .black.opacity(0.32), radius: 24, y: 16)
     }
 
     private var transportControls: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 10) {
+            shuttleButton(
+                title: "J",
+                subtitle: shuttleDirection == .reverse ? "\(Int(shuttleRate))x" : "REV",
+                systemImage: "backward.fill",
+                action: shuttleReverse
+            )
+            .keyboardShortcut("j", modifiers: [])
+
+            shuttleButton(
+                title: "K",
+                subtitle: "PAUSE",
+                systemImage: "pause.fill",
+                action: pausePlayback
+            )
+            .keyboardShortcut("k", modifiers: [])
+
+            shuttleButton(
+                title: "L",
+                subtitle: shuttleDirection == .forward ? "\(Int(shuttleRate))x" : "FWD",
+                systemImage: "forward.fill",
+                action: shuttleForward
+            )
+            .keyboardShortcut("l", modifiers: [])
+
+            Divider()
+                .frame(height: 34)
+                .padding(.horizontal, 4)
+
             Button {
-                player.seek(to: .zero)
-                player.play()
+                step(seconds: -5)
             } label: {
-                Label("Play", systemImage: "play.fill")
+                Label("-5s", systemImage: "gobackward.5")
             }
             .disabled(store.masterVideoURL == nil)
 
             Button {
-                player.pause()
-            } label: {
-                Label("Pause", systemImage: "pause.fill")
-            }
-            .disabled(store.masterVideoURL == nil)
-
-            Button {
-                showMarkSheet = true
+                openRevisionPicker()
             } label: {
                 Label("Mark \(TimecodeFormatter.string(clock.currentTime))", systemImage: "mappin.and.ellipse")
+                    .font(.system(size: 15, weight: .semibold))
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(MarkButtonStyle())
+            .keyboardShortcut("m", modifiers: [])
+            .disabled(store.masterVideoURL == nil)
+
+            Button {
+                step(seconds: 5)
+            } label: {
+                Label("+5s", systemImage: "goforward.5")
+            }
             .disabled(store.masterVideoURL == nil)
 
             Button {
@@ -144,165 +171,396 @@ struct ReviewView: View {
 
             Spacer()
 
-            Text(TimecodeFormatter.string(clock.currentTime))
-                .font(.system(size: 20, weight: .semibold, design: .monospaced))
-                .foregroundStyle(StudioTheme.gold)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(TimecodeFormatter.string(clock.currentTime))
+                    .font(.system(size: 22, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(StudioTheme.gold)
+                Text(shuttleLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
+        .buttonStyle(.bordered)
+        .controlSize(.large)
     }
 
-    private var marksPanel: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Marks")
-                    .font(.system(size: 17, weight: .semibold))
+    private var revisionPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Revision List")
+                        .font(.system(size: 18, weight: .semibold))
+                    Text("\(store.reviewMarks.count) open request\(store.reviewMarks.count == 1 ? "" : "s")")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
                 Button {
-                    store.exportReviewPackage()
+                    openRevisionPicker()
                 } label: {
-                    Label("Export", systemImage: "square.and.arrow.down")
+                    Label("Mark", systemImage: "plus")
                 }
-                .disabled(store.reviewMarks.isEmpty)
+                .buttonStyle(.borderedProminent)
+                .disabled(store.masterVideoURL == nil)
             }
 
             if store.reviewMarks.isEmpty {
                 ContentUnavailableView(
                     "No Marks Yet",
                     systemImage: "checkmark.seal",
-                    description: Text("Add a mark when something feels off.")
+                    description: Text("Pause on an issue and press Mark.")
                 )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List {
-                    ForEach(store.reviewMarks) { mark in
-                        Button {
-                            seek(to: mark.timecodeSeconds)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 5) {
-                                HStack {
-                                    Text(TimecodeFormatter.string(mark.timecodeSeconds))
-                                        .font(.system(.body, design: .monospaced))
-                                        .foregroundStyle(StudioTheme.accent)
-                                    Spacer()
-                                    Text(mark.action.title)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        ForEach($store.reviewMarks) { $mark in
+                            ReviewRevisionCard(
+                                mark: $mark,
+                                currentTime: clock.currentTime,
+                                onSeek: seek,
+                                onDelete: {
+                                    store.deleteReviewMark(id: mark.id)
                                 }
-                                Text(mark.category.title)
-                                    .font(.subheadline.weight(.semibold))
-                                if !mark.note.isEmpty {
-                                    Text(mark.note)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(3)
-                                }
-                            }
-                            .padding(.vertical, 4)
+                            )
                         }
-                        .buttonStyle(.plain)
                     }
-                    .onDelete(perform: store.deleteReviewMarks)
+                    .padding(.vertical, 2)
                 }
             }
+
+            Button {
+                store.submitReviewPackage()
+            } label: {
+                Text("SUBMIT")
+                    .font(.system(size: 16, weight: .bold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(SubmitButtonStyle())
+            .disabled(store.reviewMarks.isEmpty)
         }
+    }
+
+    private var shuttleLabel: String {
+        switch shuttleDirection {
+        case .paused: "Paused"
+        case .forward: "Forward shuttle \(Int(shuttleRate))x"
+        case .reverse: "Reverse shuttle \(Int(shuttleRate))x"
+        }
+    }
+
+    private func shuttleButton(
+        title: String,
+        subtitle: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 2) {
+                HStack(spacing: 5) {
+                    Image(systemName: systemImage)
+                    Text(title)
+                        .font(.system(.body, design: .monospaced).weight(.bold))
+                }
+                Text(subtitle)
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(minWidth: 64)
+        }
+        .disabled(store.masterVideoURL == nil)
     }
 
     private func loadMaster() {
         guard let url = store.masterVideoURL else {
-            player.pause()
+            pausePlayback()
             player.replaceCurrentItem(with: nil)
             return
         }
         player.replaceCurrentItem(with: AVPlayerItem(url: url))
         clock.attach(to: player)
+        pausePlayback()
+    }
+
+    private func openRevisionPicker() {
+        pausePlayback()
+        showRevisionPicker = true
+    }
+
+    private func shuttleReverse() {
+        if shuttleDirection == .reverse {
+            shuttleRate = min(shuttleRate * 2, 4)
+        } else {
+            shuttleDirection = .reverse
+            shuttleRate = 1
+        }
+        player.playImmediately(atRate: -shuttleRate)
+    }
+
+    private func pausePlayback() {
+        player.pause()
+        shuttleDirection = .paused
+        shuttleRate = 1
+    }
+
+    private func shuttleForward() {
+        if shuttleDirection == .forward {
+            shuttleRate = min(shuttleRate * 2, 4)
+        } else {
+            shuttleDirection = .forward
+            shuttleRate = 1
+        }
+        player.playImmediately(atRate: shuttleRate)
+    }
+
+    private func step(seconds: Double) {
+        let destination = max(0, clock.currentTime + seconds)
+        seek(to: destination)
+        pausePlayback()
     }
 
     private func seek(to seconds: Double) {
         player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600))
-        player.play()
     }
 }
 
-struct ReviewMarkSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var mark: ReviewMark
-    var onSave: (ReviewMark) -> Void
+private enum ShuttleDirection {
+    case paused
+    case forward
+    case reverse
+}
 
-    init(initialTime: Double, onSave: @escaping (ReviewMark) -> Void) {
-        self._mark = State(initialValue: ReviewMark(timecodeSeconds: initialTime))
-        self.onSave = onSave
-    }
+struct RevisionTypePickerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    var timecode: Double
+    var onChoose: (ReviewRevisionType) -> Void
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12)
+    ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Add Review Mark")
-                .font(.title3.weight(.semibold))
-
+        VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Text("Timecode")
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(TimecodeFormatter.string(mark.timecodeSeconds))
-                    .font(.system(.body, design: .monospaced).weight(.semibold))
-            }
-
-            Picker("Problem", selection: $mark.category) {
-                ForEach(ReviewCategory.allCases) { category in
-                    Text(category.title).tag(category)
-                }
-            }
-
-            Picker("Fix", selection: $mark.action) {
-                ForEach(ReviewAction.allCases) { action in
-                    Text(action.title).tag(action)
-                }
-            }
-
-            HStack {
-                Stepper("Duration: \(mark.durationSeconds, specifier: "%.1f")s", value: $mark.durationSeconds, in: 1...30, step: 0.5)
-                Spacer()
-            }
-
-            if mark.action == .modestSpeedCorrection {
-                VStack(alignment: .leading) {
-                    Text("Speed: \(mark.speedMultiplier, specifier: "%.2f")x")
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Mark Revision")
+                        .font(.system(size: 28, weight: .semibold))
+                    Text("Choose the exact edit request for \(TimecodeFormatter.string(timecode)).")
                         .foregroundStyle(.secondary)
-                    Slider(value: $mark.speedMultiplier, in: 1.05...1.20, step: 0.01)
                 }
-            }
-
-            if mark.action == .lowerVolume || mark.action == .replaceAudio {
-                VStack(alignment: .leading) {
-                    Text("Volume change: \(mark.volumeDeltaDb, specifier: "%.1f") dB")
-                        .foregroundStyle(.secondary)
-                    Slider(value: $mark.volumeDeltaDb, in: -12...0, step: 0.5)
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Note")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextEditor(text: $mark.note)
-                    .frame(height: 110)
-                    .scrollContentBackground(.hidden)
-                    .padding(8)
-                    .background(.regularMaterial)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            }
-
-            HStack {
                 Spacer()
-                Button("Cancel") {
+                Button {
                     dismiss()
+                } label: {
+                    Image(systemName: "xmark")
                 }
-                Button("Save Mark") {
-                    onSave(mark)
-                    dismiss()
+                .buttonStyle(.borderless)
+            }
+
+            LazyVGrid(columns: columns, spacing: 12) {
+                ForEach(ReviewRevisionType.allCases) { type in
+                    Button {
+                        onChoose(type)
+                    } label: {
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: type.systemImage)
+                                .font(.system(size: 22, weight: .semibold))
+                                .foregroundStyle(StudioTheme.gold)
+                                .frame(width: 30)
+
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(type.title)
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(.primary)
+                                Text(type.detail)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.leading)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
+                        .background(.regularMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(.white.opacity(0.10))
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.borderedProminent)
             }
         }
-        .padding(22)
-        .frame(width: 460)
+        .padding(24)
+        .frame(width: 760)
+        .background(StudioTheme.background)
+    }
+}
+
+struct ReviewRevisionCard: View {
+    @Binding var mark: ReviewMark
+    var currentTime: Double
+    var onSeek: (Double) -> Void
+    var onDelete: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            cardHeader
+            dynamicToolset
+            noteField
+        }
+        .padding(14)
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(.white.opacity(0.10))
+        )
+    }
+
+    private var cardHeader: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: mark.revisionType.systemImage)
+                .foregroundStyle(StudioTheme.gold)
+                .font(.system(size: 18, weight: .semibold))
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(mark.revisionType.title)
+                    .font(.system(size: 15, weight: .semibold))
+                Button {
+                    onSeek(mark.timecodeSeconds)
+                } label: {
+                    Text(TimecodeFormatter.string(mark.timecodeSeconds))
+                        .font(.system(.caption, design: .monospaced).weight(.semibold))
+                        .foregroundStyle(StudioTheme.accent)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Spacer()
+
+            Button(role: .destructive, action: onDelete) {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+        }
+    }
+
+    @ViewBuilder
+    private var dynamicToolset: some View {
+        switch mark.revisionType {
+        case .videoProblem:
+            Label("Agent should inspect this moment for visual artifacts, bad motion, malformed geometry, or framing problems.", systemImage: "eye")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .audioProblem:
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Volume adjustment: \(mark.volumeDeltaDb, specifier: "%.1f") dB")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Slider(value: $mark.volumeDeltaDb, in: -18...6, step: 0.5)
+            }
+        case .speedRamp:
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Playback speed target: \(mark.speedPercent)%")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Slider(
+                    value: Binding(
+                        get: { Double(mark.speedPercent) },
+                        set: { mark.speedPercent = Int($0.rounded()) }
+                    ),
+                    in: 50...200,
+                    step: 5
+                )
+            }
+        case .trimClipStart, .trimClipEnd:
+            trimControls
+        case .titleFix:
+            TextField("Replacement title or callout text", text: $mark.replacementTitle)
+                .textFieldStyle(.roundedBorder)
+        case .removeClip:
+            Label("This mark requests deleting the source clip from the final assembly.", systemImage: "trash")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var trimControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                timePill("In", seconds: mark.trimInSeconds)
+                Spacer()
+                Button("Set In") {
+                    mark.trimInSeconds = currentTime
+                }
+            }
+            HStack {
+                timePill("Out", seconds: mark.trimOutSeconds)
+                Spacer()
+                Button("Set Out") {
+                    mark.trimOutSeconds = currentTime
+                }
+            }
+        }
+        .font(.caption)
+    }
+
+    private func timePill(_ label: String, seconds: Double?) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Text(seconds.map(TimecodeFormatter.string) ?? "--:--:--")
+                .font(.system(.caption, design: .monospaced).weight(.semibold))
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(.black.opacity(0.20))
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+    }
+
+    private var noteField: some View {
+        TextEditor(text: $mark.note)
+            .frame(minHeight: 70)
+            .scrollContentBackground(.hidden)
+            .padding(8)
+            .background(.black.opacity(0.18))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(alignment: .topLeading) {
+                if mark.note.isEmpty {
+                    Text("Notes / instructions")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 16)
+                        .allowsHitTesting(false)
+                }
+            }
+    }
+}
+
+struct MarkButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.horizontal, 18)
+            .padding(.vertical, 9)
+            .background(configuration.isPressed ? StudioTheme.gold.opacity(0.72) : StudioTheme.gold)
+            .foregroundStyle(.black)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+struct SubmitButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.vertical, 12)
+            .background(configuration.isPressed ? StudioTheme.gold.opacity(0.72) : StudioTheme.gold)
+            .foregroundStyle(.black)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .opacity(configuration.isPressed ? 0.9 : 1)
     }
 }
 

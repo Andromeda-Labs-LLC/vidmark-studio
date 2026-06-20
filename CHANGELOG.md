@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Rebuilt the review screen around a larger hero video player.
+- Added revision-type marking with dynamic side-panel cards.
+- Added yellow submit workflow that saves and copies the full edit packet.
+- Added J/K/L shuttle controls with repeated reverse/forward speed stepping.
+- Reorganized the sidebar so Review is the primary workflow.
+
 ## v0.1.0
 
 - Initial public release of VIDMARK STUDIO.

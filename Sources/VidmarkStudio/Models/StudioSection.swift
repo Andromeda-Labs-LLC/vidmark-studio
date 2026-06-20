@@ -1,9 +1,9 @@
 import Foundation
 
 enum StudioSection: String, CaseIterable, Identifiable {
+    case review
     case episode
     case prompts
-    case review
     case audio
     case assembly
     case shorts
@@ -13,9 +13,9 @@ enum StudioSection: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .review: "Review"
         case .episode: "Episode"
         case .prompts: "Prompts"
-        case .review: "Review"
         case .audio: "Audio"
         case .assembly: "Assembly"
         case .shorts: "Shorts"
@@ -25,9 +25,9 @@ enum StudioSection: String, CaseIterable, Identifiable {
 
     var detail: String {
         switch self {
+        case .review: "Mark revisions"
         case .episode: "Sidecar and folder"
         case .prompts: "ChatGPT image batches"
-        case .review: "Timecode marks"
         case .audio: "Fades and loudness"
         case .assembly: "Manifest export"
         case .shorts: "Smart reframing"
@@ -37,9 +37,9 @@ enum StudioSection: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
+        case .review: "scope"
         case .episode: "square.stack.3d.up"
         case .prompts: "text.badge.sparkles"
-        case .review: "scope"
         case .audio: "waveform"
         case .assembly: "timeline.selection"
         case .shorts: "rectangle.portrait.on.rectangle.portrait"
