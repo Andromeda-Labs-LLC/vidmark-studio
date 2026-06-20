@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.2.2
+
+- Replaced the app icon with a premium, non-branded classic 35mm motion-picture camera icon.
+- Added the 1024px app icon source asset for future iconset regeneration.
+
 ## v0.2.1
 
 - Updated trim-start and trim-end marks so the parked playhead time pre-populates the trim `In` point.
