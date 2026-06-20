@@ -1,0 +1,29 @@
+name: Creator workflow request
+description: Describe a video review or production workflow you want the app to support.
+title: "[Workflow]: "
+labels: ["creator-workflow"]
+body:
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Workflow
+      description: Describe the real workflow from source assets to reviewed output.
+    validations:
+      required: true
+  - type: textarea
+    id: pain
+    attributes:
+      label: Current pain
+      description: What is slow, repetitive, confusing, or error-prone today?
+    validations:
+      required: true
+  - type: textarea
+    id: assets
+    attributes:
+      label: Asset types
+      description: What kinds of files are involved? Do not attach private files.
+  - type: textarea
+    id: output
+    attributes:
+      label: Desired output
+      description: What should the app produce or export?

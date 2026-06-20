@@ -1,0 +1,42 @@
+name: Bug report
+description: Report a reproducible problem in VIDMARK STUDIO.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the exact steps needed to see the issue.
+      placeholder: "1. Open...\n2. Choose...\n3. Click..."
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "Example: macOS 15.5"
+  - type: input
+    id: build
+    attributes:
+      label: App version or commit
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Do not attach private media or account material.
