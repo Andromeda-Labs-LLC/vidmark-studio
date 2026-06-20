@@ -10,6 +10,7 @@ final class StudioStore: ObservableObject {
     @Published var masterVideoURL: URL?
     @Published var audioLibraryURL: URL = ProjectPaths.audioLibraryRoot
     @Published var reviewMarks: [ReviewMark] = []
+    @Published var reviewFrameRate: Double = 24
     @Published var status = "Ready."
 
     var generatedPrompt: String {
@@ -18,6 +19,12 @@ final class StudioStore: ObservableObject {
 
     var episodeRootForDisplay: String {
         episodeFolderURL?.path ?? "No episode folder selected"
+    }
+
+    var reviewMetadataSummary: String {
+        let episode = "\(sidecar.episodeID) · \(sidecar.workingTitle)"
+        guard let masterVideoURL else { return episode }
+        return "\(episode) · \(masterVideoURL.lastPathComponent)"
     }
 
     func createEpisodeFolder() {
@@ -58,6 +65,7 @@ final class StudioStore: ObservableObject {
     }
 
     func saveSidecar() throws {
+        syncMetadataFromSelection()
         guard let episodeFolderURL else {
             status = "Choose or create an episode folder first."
             return
@@ -99,11 +107,13 @@ final class StudioStore: ObservableObject {
         assembly = AssemblySettings()
         episodeFolderURL = nil
         masterVideoURL = nil
+        reviewFrameRate = 24
         selectedSection = .review
         status = "Started a clean review. Project state, selected master, marks, and generated packets were cleared."
     }
 
     private func writeReviewPackage() throws -> (jsonURL: URL, markdownURL: URL, markdown: String) {
+        syncMetadataFromSelection()
         guard let episodeFolderURL else {
             status = "Choose or create an episode folder first."
             throw StudioStoreError.missingEpisodeFolder
@@ -114,6 +124,7 @@ final class StudioStore: ObservableObject {
             episodeID: sidecar.episodeID,
             workingTitle: sidecar.workingTitle,
             masterVideo: masterVideoURL?.path ?? "",
+            timecodeFrameRate: reviewFrameRate,
             generatedAt: Date(),
             reviewMarks: reviewMarks.sorted { $0.timecodeSeconds < $1.timecodeSeconds },
             assemblySettings: assembly
@@ -175,7 +186,8 @@ final class StudioStore: ObservableObject {
         panel.directoryURL = ProjectPaths.videosRoot
         if panel.runModal() == .OK, let url = panel.url {
             episodeFolderURL = url
-            status = "Selected episode folder."
+            syncMetadataFromSelection()
+            status = "Selected episode folder: \(sidecar.episodeID)."
         }
     }
 
@@ -192,7 +204,8 @@ final class StudioStore: ObservableObject {
             if episodeFolderURL == nil {
                 episodeFolderURL = ProjectPaths.inferEpisodeFolder(from: url)
             }
-            status = "Selected master video."
+            syncMetadataFromSelection()
+            status = "Selected master video for \(sidecar.episodeID)."
         }
     }
 
@@ -222,6 +235,20 @@ final class StudioStore: ObservableObject {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         encoder.dateEncodingStrategy = .iso8601
         return encoder
+    }
+
+    private func syncMetadataFromSelection() {
+        if episodeFolderURL == nil, let masterVideoURL {
+            episodeFolderURL = ProjectPaths.inferEpisodeFolder(from: masterVideoURL)
+        }
+        guard let episodeFolderURL else { return }
+        let metadata = ProjectPaths.metadata(
+            forEpisodeFolder: episodeFolderURL,
+            masterVideo: masterVideoURL
+        )
+        sidecar.episodeID = metadata.episodeID
+        sidecar.workingTitle = metadata.workingTitle
+        sidecar.slug = metadata.slug
     }
 
     private func removeGeneratedReviewOutputs() {
@@ -262,6 +289,7 @@ struct ReviewPackage: Codable {
     var episodeID: String
     var workingTitle: String
     var masterVideo: String
+    var timecodeFrameRate: Double
     var generatedAt: Date
     var reviewMarks: [ReviewMark]
     var assemblySettings: AssemblySettings
@@ -272,6 +300,7 @@ struct ReviewPackage: Codable {
             "",
             "- Title: \(workingTitle)",
             "- Master video: `\(masterVideo)`",
+            "- Timecode frame rate: \(String(format: "%.3g", timecodeFrameRate)) fps",
             "- Generated: \(generatedAt)",
             "",
             "## Rules",
@@ -288,7 +317,7 @@ struct ReviewPackage: Codable {
         ]
         for (index, mark) in reviewMarks.enumerated() {
             lines.append(
-                "| \(index + 1) | \(TimecodeFormatter.string(mark.timecodeSeconds)) | \(mark.revisionType.title) | \(optionalTimecode(mark.trimInSeconds)) | \(optionalTimecode(mark.trimOutSeconds)) | \(mark.speedPercent)% | \(String(format: "%.1f dB", mark.volumeDeltaDb)) | \(sanitize(mark.replacementTitle)) | \(sanitize(mark.replacementSFXPath)) | \(sanitize(mark.sfxNote)) | \(sanitize(mark.note)) |"
+                "| \(index + 1) | \(TimecodeFormatter.string(mark.timecodeSeconds, frameRate: timecodeFrameRate)) | \(mark.revisionType.title) | \(optionalTimecode(mark.trimInSeconds)) | \(optionalTimecode(mark.trimOutSeconds)) | \(mark.speedPercent)% | \(String(format: "%.1f dB", mark.volumeDeltaDb)) | \(sanitize(mark.replacementTitle)) | \(sanitize(mark.replacementSFXPath)) | \(sanitize(mark.sfxNote)) | \(sanitize(mark.note)) |"
             )
         }
         return lines.joined(separator: "\n") + "\n"
@@ -296,7 +325,7 @@ struct ReviewPackage: Codable {
 
     private func optionalTimecode(_ seconds: Double?) -> String {
         guard let seconds else { return "" }
-        return TimecodeFormatter.string(seconds)
+        return TimecodeFormatter.string(seconds, frameRate: timecodeFrameRate)
     }
 
     private func sanitize(_ text: String) -> String {

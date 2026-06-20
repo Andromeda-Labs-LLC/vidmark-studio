@@ -1,5 +1,11 @@
 import Foundation
 
+struct EpisodeMetadata: Equatable {
+    var episodeID: String
+    var workingTitle: String
+    var slug: String
+}
+
 enum ProjectPaths {
     private static let videosRootPreferenceKey = "VidmarkStudioVideosRoot"
     private static let audioLibraryPreferenceKey = "VidmarkStudioAudioLibraryRoot"
@@ -73,6 +79,19 @@ enum ProjectPaths {
         return nil
     }
 
+    static func metadata(forEpisodeFolder folder: URL, masterVideo: URL? = nil) -> EpisodeMetadata {
+        let folderName = folder.lastPathComponent
+        let masterName = masterVideo?.deletingPathExtension().lastPathComponent ?? ""
+        let episodeID = extractEpisodeID(from: folderName)
+            ?? extractEpisodeID(from: masterName)
+            ?? "VID-0000"
+        let slug = slugFromProjectName(folderName, episodeID: episodeID)
+            ?? slugFromProjectName(masterName, episodeID: episodeID)
+            ?? "untitled-video-review-project"
+        let workingTitle = titleFromSlug(slug)
+        return EpisodeMetadata(episodeID: episodeID, workingTitle: workingTitle, slug: slug)
+    }
+
     static func studioAssemblerScriptURL() -> URL? {
         if let resourceURL = Bundle.main.resourceURL {
             let bundled = resourceURL
@@ -88,6 +107,59 @@ enum ProjectPaths {
     }
 
     private static func isLikelyProjectFolder(_ name: String) -> Bool {
-        name.hasPrefix("VID-") || name.hasPrefix("VRS-")
+        extractEpisodeID(from: name) != nil
+    }
+
+    private static func extractEpisodeID(from text: String) -> String? {
+        guard let range = text.range(
+            of: #"[A-Za-z]{2,}-\d{3,}"#,
+            options: .regularExpression
+        ) else { return nil }
+        return String(text[range]).uppercased()
+    }
+
+    private static func slugFromProjectName(_ name: String, episodeID: String) -> String? {
+        var slug = name
+        if slug.localizedCaseInsensitiveContains(episodeID),
+           let range = slug.range(of: episodeID, options: [.caseInsensitive]) {
+            slug.removeSubrange(range)
+        }
+        slug = slug.replacingOccurrences(
+            of: #"(?i)^[-_\s]*v\d+[-_\s]*"#,
+            with: "",
+            options: .regularExpression
+        )
+        slug = slug.replacingOccurrences(
+            of: #"(?i)[-_\s]*v\d+$"#,
+            with: "",
+            options: .regularExpression
+        )
+        slug = slug.replacingOccurrences(
+            of: #"(?i)[-_\s]*edit[-_\s]*v\d+.*$"#,
+            with: "",
+            options: .regularExpression
+        )
+        slug = slug.replacingOccurrences(
+            of: #"[^A-Za-z0-9]+"#,
+            with: "-",
+            options: .regularExpression
+        )
+        slug = slug.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return slug.isEmpty ? nil : slug.lowercased()
+    }
+
+    private static func titleFromSlug(_ slug: String) -> String {
+        let words = slug
+            .replacingOccurrences(of: "-", with: " ")
+            .replacingOccurrences(of: "_", with: " ")
+            .split(separator: " ")
+            .map { word -> String in
+                let lower = word.lowercased()
+                if lower.count <= 3, ["ai", "ugc", "sfx", "qa"].contains(lower) {
+                    return lower.uppercased()
+                }
+                return lower.prefix(1).uppercased() + lower.dropFirst()
+            }
+        return words.isEmpty ? "Untitled Video Review Project" : words.joined(separator: " ")
     }
 }

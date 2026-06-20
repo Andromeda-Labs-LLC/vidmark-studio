@@ -45,6 +45,7 @@ struct ReviewView: View {
         .sheet(isPresented: $showRevisionPicker) {
             RevisionTypePickerSheet(
                 timecode: clock.currentTime,
+                frameRate: store.reviewFrameRate,
                 onChoose: { type in
                     store.addReviewMark(ReviewMark(timecodeSeconds: clock.currentTime, revisionType: type))
                     showRevisionPicker = false
@@ -81,6 +82,13 @@ struct ReviewView: View {
                     .font(.system(size: 24, weight: .semibold))
                 Text("Pause on a trouble spot, press Mark, choose the revision type, then submit the edit packet.")
                     .foregroundStyle(.secondary)
+                if store.masterVideoURL != nil {
+                    Text(store.reviewMetadataSummary)
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.58))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
             }
 
             Spacer()
@@ -201,7 +209,7 @@ struct ReviewView: View {
             Button {
                 openRevisionPicker()
             } label: {
-                Label("Mark \(TimecodeFormatter.string(clock.currentTime))", systemImage: "mappin.and.ellipse")
+                Label("Mark \(TimecodeFormatter.string(clock.currentTime, frameRate: store.reviewFrameRate))", systemImage: "mappin.and.ellipse")
                     .font(.system(size: 15, weight: .semibold))
             }
             .buttonStyle(MarkButtonStyle())
@@ -224,7 +232,7 @@ struct ReviewView: View {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 2) {
-                Text(TimecodeFormatter.string(clock.currentTime))
+                Text(TimecodeFormatter.string(clock.currentTime, frameRate: store.reviewFrameRate))
                     .font(.system(size: 22, weight: .semibold, design: .monospaced))
                     .foregroundStyle(StudioTheme.gold)
                 Text(shuttleLabel)
@@ -270,6 +278,7 @@ struct ReviewView: View {
                             ReviewRevisionCard(
                                 mark: $mark,
                                 currentTime: clock.currentTime,
+                                frameRate: store.reviewFrameRate,
                                 audioLibraryURL: store.audioLibraryURL,
                                 onSeek: seek,
                                 onDelete: {
@@ -353,6 +362,8 @@ struct ReviewView: View {
             pausePlayback()
             frameStepTarget = nil
             frameStepIndex = nil
+            frameDuration = CMTime(value: 1, timescale: 24)
+            store.reviewFrameRate = 24
             player.replaceCurrentItem(with: nil)
             return
         }
@@ -554,6 +565,7 @@ struct ReviewView: View {
 
     private func refreshFrameDuration(for item: AVPlayerItem) {
         frameDuration = CMTime(value: 1, timescale: 24)
+        store.reviewFrameRate = 24
         Task {
             do {
                 let tracks = try await item.asset.loadTracks(withMediaType: .video)
@@ -570,6 +582,9 @@ struct ReviewView: View {
                 await MainActor.run {
                     guard player.currentItem === item else { return }
                     frameDuration = detectedFrameDuration
+                    if detectedFrameDuration.seconds > 0 {
+                        store.reviewFrameRate = 1 / detectedFrameDuration.seconds
+                    }
                     if player.currentTime() < detectedFrameDuration {
                         seekToStart()
                     }
@@ -578,6 +593,7 @@ struct ReviewView: View {
                 await MainActor.run {
                     guard player.currentItem === item else { return }
                     frameDuration = CMTime(value: 1, timescale: 24)
+                    store.reviewFrameRate = 24
                 }
             }
         }
@@ -615,6 +631,7 @@ struct ReviewView: View {
 struct RevisionTypePickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     var timecode: Double
+    var frameRate: Double
     var onChoose: (ReviewRevisionType) -> Void
 
     private let columns = [
@@ -628,7 +645,7 @@ struct RevisionTypePickerSheet: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Mark Revision")
                         .font(.system(size: 28, weight: .semibold))
-                    Text("Choose the exact edit request for \(TimecodeFormatter.string(timecode)).")
+                    Text("Choose the exact edit request for \(TimecodeFormatter.string(timecode, frameRate: frameRate)).")
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -684,6 +701,7 @@ struct RevisionTypePickerSheet: View {
 struct ReviewRevisionCard: View {
     @Binding var mark: ReviewMark
     var currentTime: Double
+    var frameRate: Double
     var audioLibraryURL: URL
     var onSeek: (Double) -> Void
     var onDelete: () -> Void
@@ -727,7 +745,7 @@ struct ReviewRevisionCard: View {
                 Button {
                     onSeek(mark.timecodeSeconds)
                 } label: {
-                    Text(TimecodeFormatter.string(mark.timecodeSeconds))
+                    Text(TimecodeFormatter.string(mark.timecodeSeconds, frameRate: frameRate))
                         .font(.system(.caption, design: .monospaced).weight(.semibold))
                         .foregroundStyle(StudioTheme.accent)
                 }
@@ -832,7 +850,7 @@ struct ReviewRevisionCard: View {
         HStack(spacing: 6) {
             Text(label)
                 .foregroundStyle(.secondary)
-            Text(seconds.map(TimecodeFormatter.string) ?? "--:--:--")
+            Text(seconds.map { TimecodeFormatter.string($0, frameRate: frameRate) } ?? "--:--:--")
                 .font(.system(.caption, design: .monospaced).weight(.semibold))
         }
         .padding(.horizontal, 8)

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.3
+
+- Added automatic episode metadata inference when choosing an episode folder or master video.
+- Review packets now resolve project IDs and titles from real folder/master names instead of falling back to `VID-0000` and the untitled placeholder.
+- Added a compact review-header metadata line so reviewers can verify the active episode, title, and loaded master before submitting notes.
+- Review timecodes now use the loaded master video's detected frame rate and export that frame-rate metadata in review packets.
+
 ## v0.2.2
 
 - Replaced the app icon with a premium, non-branded classic 35mm motion-picture camera icon.

@@ -95,11 +95,12 @@ struct ReviewMark: Identifiable, Codable, Equatable {
 }
 
 enum TimecodeFormatter {
-    static func string(_ seconds: Double) -> String {
+    static func string(_ seconds: Double, frameRate: Double = 24) -> String {
         let clamped = max(0, seconds)
-        let totalFrames = Int((clamped * 24).rounded())
-        let frames = totalFrames % 24
-        let totalSeconds = totalFrames / 24
+        let framesPerSecond = max(1, Int(frameRate.rounded()))
+        let totalFrames = Int((clamped * Double(framesPerSecond)).rounded())
+        let frames = totalFrames % framesPerSecond
+        let totalSeconds = totalFrames / framesPerSecond
         let secs = totalSeconds % 60
         let mins = (totalSeconds / 60) % 60
         let hours = totalSeconds / 3600
