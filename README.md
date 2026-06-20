@@ -21,11 +21,12 @@ It is built for creator workflows where a finished video is assembled from many 
 - Theater mode and full-screen playback for better review
 - Large hero review player with J/K/L shuttle controls
 - Timecode revision cards for video, audio, speed, trim, title, and remove-clip requests
-- Dynamic card controls for notes, speed percentages, audio volume changes, trim in/out points, and title fixes
+- New Review reset that clears the active marks and generated review packets without deleting media
+- Dynamic card controls for notes, speed percentages, SFX swaps with preview, audio volume changes, trim in/out points, and title fixes
 - Submit workflow that saves a Markdown/JSON revision packet and copies the Markdown packet to the clipboard
 - Exportable review package in JSON and Markdown
 - Assembly settings export for local post-production
-- FFmpeg-based master assembly helper with hard video cuts, soft audio fades, and loudness normalization
+- FFmpeg-based master assembly helper with hard video cuts, hard audio cuts, and loudness normalization
 - FFmpeg/Pillow-based smart reframing helper for vertical short candidates
 - Local system check for FFmpeg, FFprobe, Python, Swift, engine scripts, and workspace folders
 
@@ -93,6 +94,7 @@ video-generations/drafts
 video-generations/approved
 masters/drafts
 masters/final
+masters/shorts
 audio/stems
 audio/mix
 assembly/manifests
@@ -104,17 +106,29 @@ prompts
 qa/reviewer-notes
 ```
 
+Recommended master naming:
+
+- Draft review masters: `<project-id>-v1.mp4`, `<project-id>-v2.mp4`, `<project-id>-v3.mp4`
+- Draft render artifacts: `masters/drafts/workfiles/`
+- Approved upload master: `<project-id>-Final.mp4`
+- Approved Shorts masters: `<project-id>-Short-01.mp4`, `<project-id>-Short-02.mp4`
+
 ## Review Workflow
 
 1. Choose or create a project folder.
 2. Choose a master video.
 3. Watch in normal, theater, or full-screen mode.
-4. Use `J` for reverse shuttle, `K` to pause, and `L` for forward shuttle. Repeated `J` or `L` presses increase shuttle speed.
-5. Pause on a trouble spot and press `Mark`.
-6. Choose the revision type: video problem, audio problem, speed ramp, trim clip start, trim clip end, title fix, or remove clip.
-7. Add notes or use the card-specific controls in the revision panel.
-8. Press `SUBMIT` to save the full revision packet and copy it to the clipboard for editor or agent handoff.
-9. Assemble or reframe only after the project passes review.
+4. Use the arrow transport buttons to step backward or forward one frame.
+5. Use `J` for reverse playback, `L` for forward playback, and press the same key again to double the shuttle speed. Use `K` or the spacebar to play/pause.
+6. Use `1` to jump to the first frame and `2` to jump to the last frame.
+7. Pause on a trouble spot and press `Mark`, or press `M`.
+8. Press `Thumbnail` to mark the parked frame for a full-resolution PNG thumbnail export.
+9. Choose the revision type: video problem, audio problem, speed ramp, trim clip start, trim clip end, title fix, thumbnail, or remove clip.
+10. Add notes or use the card-specific controls in the revision panel.
+   Audio problem cards can preview and attach a replacement SFX file from the selected audio library.
+11. Press `SUBMIT` to save the full revision packet and copy it to the clipboard for editor or agent handoff.
+12. Use `New Review` to reset the app to a clean state before loading another project. This clears selected project state and generated review packets, but never deletes media.
+13. Assemble or reframe only after the project passes review.
 
 ## Local CLI: Reframer
 
@@ -151,7 +165,7 @@ Example manifest:
     "height": 1080,
     "fps": 24,
     "quality": "standard",
-    "audioFadeMs": 350,
+    "audioFadeMs": 0,
     "targetLUFS": -19,
     "truePeakDb": -2
   },

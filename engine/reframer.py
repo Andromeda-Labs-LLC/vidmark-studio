@@ -486,7 +486,7 @@ def write_reports(
 ) -> tuple[Path, Path]:
     report = {
         "tool": "VIDMARK STUDIO Reframer",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "source_video": str(source_video),
         "source": asdict(info),
         "settings": {

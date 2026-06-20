@@ -8,8 +8,19 @@ enum ReviewRevisionType: String, Codable, CaseIterable, Identifiable {
     case trimClipEnd
     case titleFix
     case removeClip
+    case thumbnail
 
     var id: String { rawValue }
+
+    static let pickerCases: [ReviewRevisionType] = [
+        .videoProblem,
+        .audioProblem,
+        .speedRamp,
+        .trimClipStart,
+        .trimClipEnd,
+        .titleFix,
+        .removeClip
+    ]
 
     var title: String {
         switch self {
@@ -20,6 +31,7 @@ enum ReviewRevisionType: String, Codable, CaseIterable, Identifiable {
         case .trimClipEnd: "Trim clip end"
         case .titleFix: "Title fix"
         case .removeClip: "Remove clip"
+        case .thumbnail: "Thumbnail"
         }
     }
 
@@ -32,6 +44,7 @@ enum ReviewRevisionType: String, Codable, CaseIterable, Identifiable {
         case .trimClipEnd: "Mark an in/out range to cut from the ending side of a clip."
         case .titleFix: "Request a title, callout, typo, placement, or timing correction."
         case .removeClip: "Remove the entire clip from the finished assembly."
+        case .thumbnail: "Use this exact frame as the source image for the video thumbnail."
         }
     }
 
@@ -44,6 +57,7 @@ enum ReviewRevisionType: String, Codable, CaseIterable, Identifiable {
         case .trimClipEnd: "timeline.selection"
         case .titleFix: "textformat"
         case .removeClip: "trash"
+        case .thumbnail: "photo"
         }
     }
 }
@@ -58,6 +72,8 @@ struct ReviewMark: Identifiable, Codable, Equatable {
     var speedPercent: Int = 100
     var volumeDeltaDb: Double = -3
     var replacementTitle = ""
+    var replacementSFXPath = ""
+    var sfxNote = ""
     var createdAt = Date()
 
     init(timecodeSeconds: Double, revisionType: ReviewRevisionType = .videoProblem) {
@@ -65,14 +81,13 @@ struct ReviewMark: Identifiable, Codable, Equatable {
         self.revisionType = revisionType
 
         switch revisionType {
-        case .trimClipStart:
-            self.trimInSeconds = 0
-            self.trimOutSeconds = timecodeSeconds
-        case .trimClipEnd:
+        case .trimClipStart, .trimClipEnd:
             self.trimInSeconds = timecodeSeconds
-            self.trimOutSeconds = timecodeSeconds + 2
+            self.trimOutSeconds = nil
         case .speedRamp:
             self.speedPercent = 120
+        case .thumbnail:
+            self.note = "Export a full-resolution 1920x1080 PNG still image from this exact frame for the YouTube thumbnail background."
         default:
             break
         }

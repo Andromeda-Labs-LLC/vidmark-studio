@@ -30,6 +30,7 @@ final class StudioStore: ObservableObject {
             "video-generations/approved",
             "masters/drafts",
             "masters/final",
+            "masters/shorts",
             "audio/stems",
             "audio/mix",
             "assembly/manifests",
@@ -89,6 +90,17 @@ final class StudioStore: ObservableObject {
         } catch {
             status = "Could not submit review package: \(error.localizedDescription)"
         }
+    }
+
+    func startNewReview() {
+        reviewMarks.removeAll()
+        removeGeneratedReviewOutputs()
+        sidecar = EpisodeSidecar()
+        assembly = AssemblySettings()
+        episodeFolderURL = nil
+        masterVideoURL = nil
+        selectedSection = .review
+        status = "Started a clean review. Project state, selected master, marks, and generated packets were cleared."
     }
 
     private func writeReviewPackage() throws -> (jsonURL: URL, markdownURL: URL, markdown: String) {
@@ -194,6 +206,7 @@ final class StudioStore: ObservableObject {
         panel.directoryURL = audioLibraryURL
         if panel.runModal() == .OK, let url = panel.url {
             audioLibraryURL = url
+            ProjectPaths.setAudioLibraryRoot(url)
             status = "Selected audio library."
         }
     }
@@ -209,6 +222,29 @@ final class StudioStore: ObservableObject {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         encoder.dateEncodingStrategy = .iso8601
         return encoder
+    }
+
+    private func removeGeneratedReviewOutputs() {
+        guard let episodeFolderURL else { return }
+        let outputDirectories = [
+            episodeFolderURL.appendingPathComponent("qa/reviewer-notes", isDirectory: true),
+            episodeFolderURL.appendingPathComponent("assembly/manifests", isDirectory: true)
+        ]
+        let removableNameFragments = [
+            "_review-marks",
+            "_studio-assembly-settings"
+        ]
+
+        for directory in outputDirectories {
+            guard let files = try? FileManager.default.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: nil
+            ) else { continue }
+
+            for file in files where removableNameFragments.contains(where: { file.lastPathComponent.contains($0) }) {
+                try? FileManager.default.removeItem(at: file)
+            }
+        }
     }
 }
 
@@ -241,17 +277,18 @@ struct ReviewPackage: Codable {
             "## Rules",
             "",
             "- Visual edits remain hard cuts only.",
-            "- Audio uses gentle fades/crossfades and loudness normalization.",
+            "- Audio uses hard cuts aligned to visual edits, with loudness normalization and peak control.",
             "- Speed correction is allowed only for marks that explicitly request it.",
+            "- Thumbnail marks request a full-resolution 1920x1080 PNG still exported from the exact marked frame.",
             "",
             "## Marks",
             "",
-            "| # | Timecode | Type | Trim In | Trim Out | Speed | Volume | Replacement Title | Notes |",
-            "| ---: | --- | --- | --- | --- | ---: | ---: | --- | --- |"
+            "| # | Timecode | Type | Trim In | Trim Out | Speed | Volume | Replacement Title | Replacement SFX | SFX Note | Notes |",
+            "| ---: | --- | --- | --- | --- | ---: | ---: | --- | --- | --- | --- |"
         ]
         for (index, mark) in reviewMarks.enumerated() {
             lines.append(
-                "| \(index + 1) | \(TimecodeFormatter.string(mark.timecodeSeconds)) | \(mark.revisionType.title) | \(optionalTimecode(mark.trimInSeconds)) | \(optionalTimecode(mark.trimOutSeconds)) | \(mark.speedPercent)% | \(String(format: "%.1f dB", mark.volumeDeltaDb)) | \(sanitize(mark.replacementTitle)) | \(sanitize(mark.note)) |"
+                "| \(index + 1) | \(TimecodeFormatter.string(mark.timecodeSeconds)) | \(mark.revisionType.title) | \(optionalTimecode(mark.trimInSeconds)) | \(optionalTimecode(mark.trimOutSeconds)) | \(mark.speedPercent)% | \(String(format: "%.1f dB", mark.volumeDeltaDb)) | \(sanitize(mark.replacementTitle)) | \(sanitize(mark.replacementSFXPath)) | \(sanitize(mark.sfxNote)) | \(sanitize(mark.note)) |"
             )
         }
         return lines.joined(separator: "\n") + "\n"

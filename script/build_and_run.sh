@@ -4,6 +4,7 @@ set -euo pipefail
 MODE="${1:-run}"
 PRODUCT_NAME="VidmarkStudio"
 APP_NAME="VIDMARK STUDIO"
+APP_VERSION="0.2.2"
 BUNDLE_ID="studio.vidmark.desktop"
 MIN_SYSTEM_VERSION="14.0"
 
@@ -45,6 +46,10 @@ cat >"$INFO_PLIST" <<PLIST
   <string>$APP_NAME</string>
   <key>CFBundleDisplayName</key>
   <string>$APP_NAME</string>
+  <key>CFBundleShortVersionString</key>
+  <string>$APP_VERSION</string>
+  <key>CFBundleVersion</key>
+  <string>$APP_VERSION</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleIconFile</key>
