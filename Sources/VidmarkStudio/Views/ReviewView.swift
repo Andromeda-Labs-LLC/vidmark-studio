@@ -10,9 +10,13 @@ struct ReviewView: View {
     @State private var isTheaterMode = false
     @State private var fullScreenTrigger = 0
     @State private var isPlaying = false
+    @State private var shuttleDirection = 0
+    @State private var shuttleMultiplier: Float = 1
     @State private var frameStepTarget: CMTime?
+    @State private var frameStepIndex: Int?
     @State private var frameDuration = CMTime(value: 1, timescale: 24)
     @State private var showNewReviewConfirmation = false
+    @State private var keyDownMonitor: Any?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -27,7 +31,13 @@ struct ReviewView: View {
             }
         }
         .background(StudioTheme.background)
-        .onAppear(perform: loadMaster)
+        .onAppear {
+            loadMaster()
+            installKeyDownMonitor()
+        }
+        .onDisappear {
+            removeKeyDownMonitor()
+        }
         .onChange(of: store.masterVideoURL) {
             loadMaster()
         }
@@ -50,7 +60,7 @@ struct ReviewView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This clears the visible revision cards and removes generated review packet and assembly setting files for the selected episode. Media files are left untouched.")
+            Text("This resets the app to a clean review state by clearing the selected episode, selected master, visible revision cards, project metadata, and generated review packet files. Media files are left untouched.")
         }
     }
 
@@ -79,7 +89,14 @@ struct ReviewView: View {
             } label: {
                 Label("New Review", systemImage: "arrow.counterclockwise")
             }
-            .disabled(store.reviewMarks.isEmpty && store.episodeFolderURL == nil)
+
+            Button {
+                markThumbnailFrame()
+            } label: {
+                Label("Thumbnail", systemImage: "photo")
+            }
+            .buttonStyle(YellowPillButtonStyle())
+            .disabled(store.masterVideoURL == nil)
 
             Button {
                 store.chooseEpisodeFolder()
@@ -135,12 +152,18 @@ struct ReviewView: View {
     private var transportControls: some View {
         HStack(spacing: 10) {
             shuttleButton(
-                title: "J",
+                title: "←",
                 subtitle: "-1 FR",
                 systemImage: "backward.frame.fill",
                 action: stepBackwardOneFrame
             )
-            .keyboardShortcut("j", modifiers: [])
+
+            shuttleButton(
+                title: "J",
+                subtitle: reverseSubtitle,
+                systemImage: "backward.fill",
+                action: { shuttlePlayback(direction: -1) }
+            )
 
             shuttleButton(
                 title: "K",
@@ -148,15 +171,20 @@ struct ReviewView: View {
                 systemImage: isPlaying ? "pause.fill" : "play.fill",
                 action: togglePlayback
             )
-            .keyboardShortcut("k", modifiers: [])
 
             shuttleButton(
                 title: "L",
+                subtitle: forwardSubtitle,
+                systemImage: "forward.fill",
+                action: { shuttlePlayback(direction: 1) }
+            )
+
+            shuttleButton(
+                title: "→",
                 subtitle: "+1 FR",
                 systemImage: "forward.frame.fill",
                 action: stepForwardOneFrame
             )
-            .keyboardShortcut("l", modifiers: [])
 
             Divider()
                 .frame(height: 34)
@@ -176,7 +204,6 @@ struct ReviewView: View {
                     .font(.system(size: 15, weight: .semibold))
             }
             .buttonStyle(MarkButtonStyle())
-            .keyboardShortcut("m", modifiers: [])
             .disabled(store.masterVideoURL == nil)
 
             Button {
@@ -267,7 +294,21 @@ struct ReviewView: View {
     }
 
     private var shuttleLabel: String {
-        isPlaying ? "Playing" : "Paused - J/L step one frame"
+        guard isPlaying else { return "Paused - arrows step one frame" }
+        let direction = shuttleDirection < 0 ? "Reverse" : "Forward"
+        return "\(direction) \(speedLabel)"
+    }
+
+    private var reverseSubtitle: String {
+        isPlaying && shuttleDirection < 0 ? speedLabel : "REV"
+    }
+
+    private var forwardSubtitle: String {
+        isPlaying && shuttleDirection > 0 ? speedLabel : "FWD"
+    }
+
+    private var speedLabel: String {
+        "\(Int(shuttleMultiplier))X"
     }
 
     private func shuttleButton(
@@ -296,6 +337,7 @@ struct ReviewView: View {
         guard let url = store.masterVideoURL else {
             pausePlayback()
             frameStepTarget = nil
+            frameStepIndex = nil
             player.replaceCurrentItem(with: nil)
             return
         }
@@ -305,8 +347,9 @@ struct ReviewView: View {
         player.replaceCurrentItem(with: item)
         refreshFrameDuration(for: item)
         frameStepTarget = nil
+        frameStepIndex = nil
         clock.attach(to: player)
-        pausePlayback()
+        seekToStart()
     }
 
     private func openRevisionPicker() {
@@ -314,9 +357,69 @@ struct ReviewView: View {
         showRevisionPicker = true
     }
 
+    private func markThumbnailFrame() {
+        pausePlayback()
+        store.addReviewMark(ReviewMark(timecodeSeconds: clock.currentTime, revisionType: .thumbnail))
+    }
+
+    private func installKeyDownMonitor() {
+        guard keyDownMonitor == nil else { return }
+        keyDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard handleBareMarkShortcut(event) else { return event }
+            return nil
+        }
+    }
+
+    private func removeKeyDownMonitor() {
+        guard let keyDownMonitor else { return }
+        NSEvent.removeMonitor(keyDownMonitor)
+        self.keyDownMonitor = nil
+    }
+
+    private func handleBareMarkShortcut(_ event: NSEvent) -> Bool {
+        guard store.masterVideoURL != nil else { return false }
+        guard !showRevisionPicker && !showNewReviewConfirmation else { return false }
+        guard !isTextInputActive else { return false }
+        let disallowedModifiers: NSEvent.ModifierFlags = [.command, .option, .control, .shift]
+        guard event.modifierFlags.intersection(disallowedModifiers).isEmpty else { return false }
+        guard let key = event.charactersIgnoringModifiers?.lowercased() else { return false }
+
+        switch key {
+        case "m":
+            guard !event.isARepeat else { return true }
+            openRevisionPicker()
+        case "j":
+            guard !event.isARepeat else { return true }
+            shuttlePlayback(direction: -1)
+        case "k", " ":
+            guard !event.isARepeat else { return true }
+            togglePlayback()
+        case "l":
+            guard !event.isARepeat else { return true }
+            shuttlePlayback(direction: 1)
+        case "1":
+            guard !event.isARepeat else { return true }
+            seekToStart()
+        case "2":
+            guard !event.isARepeat else { return true }
+            seekToEnd()
+        default:
+            return false
+        }
+
+        return true
+    }
+
+    private var isTextInputActive: Bool {
+        guard let firstResponder = NSApp.keyWindow?.firstResponder else { return false }
+        return firstResponder is NSTextView || firstResponder is NSTextField
+    }
+
     private func pausePlayback() {
         player.pause()
         isPlaying = false
+        shuttleDirection = 0
+        shuttleMultiplier = 1
         let currentSeconds = player.currentTime().seconds
         if currentSeconds.isFinite {
             clock.currentTime = currentSeconds
@@ -328,9 +431,33 @@ struct ReviewView: View {
         if isPlaying {
             pausePlayback()
         } else {
+            shuttleDirection = 1
+            shuttleMultiplier = 1
             player.playImmediately(atRate: 1)
             isPlaying = true
         }
+    }
+
+    private func shuttlePlayback(direction: Int) {
+        guard store.masterVideoURL != nil else { return }
+        frameStepTarget = nil
+        if isPlaying && shuttleDirection == direction {
+            shuttleMultiplier = min(shuttleMultiplier * 2, 16)
+        } else {
+            shuttleMultiplier = 1
+        }
+        shuttleDirection = direction
+        isPlaying = true
+        player.playImmediately(atRate: Float(direction) * shuttleMultiplier)
+    }
+
+    private func seekToStart() {
+        seekAndPause(to: time(forFrameIndex: minimumReviewFrameIndex))
+    }
+
+    private func seekToEnd() {
+        guard player.currentItem?.duration.isNumeric == true else { return }
+        seekAndPause(to: time(forFrameIndex: maximumReviewFrameIndex))
     }
 
     private func stepBackwardOneFrame() {
@@ -345,29 +472,22 @@ struct ReviewView: View {
         guard store.masterVideoURL != nil else { return }
         pausePlayback()
 
-        let baseTime = frameStepTarget ?? player.currentTime()
-        let delta = CMTimeMultiply(frameDuration, multiplier: direction)
-        let duration = player.currentItem?.duration
-        var target = CMTimeAdd(baseTime, delta)
-
-        if target < .zero {
-            target = .zero
-        }
-
-        if let duration, duration.isNumeric, target > duration {
-            target = duration
-        }
-
+        let baseIndex = frameStepIndex ?? frameIndex(for: frameStepTarget ?? player.currentTime())
+        let targetIndex = clampedFrameIndex(baseIndex + Int(direction))
+        let target = time(forFrameIndex: targetIndex)
+        frameStepIndex = targetIndex
         frameStepTarget = target
         clock.currentTime = target.seconds.isFinite ? target.seconds : clock.currentTime
-        let targetSeconds = target.seconds
         player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero) { finished in
             guard finished else { return }
             Task { @MainActor in
-                if self.frameStepTarget?.seconds == targetSeconds {
+                if self.frameStepIndex == targetIndex {
+                    self.frameStepIndex = nil
+                }
+                if self.frameStepTarget == target {
                     self.frameStepTarget = nil
                 }
-                self.clock.currentTime = targetSeconds.isFinite ? targetSeconds : self.clock.currentTime
+                self.clock.currentTime = target.seconds.isFinite ? target.seconds : self.clock.currentTime
             }
         }
     }
@@ -380,9 +500,28 @@ struct ReviewView: View {
 
     private func seek(to seconds: Double) {
         frameStepTarget = nil
+        frameStepIndex = nil
         let target = CMTime(seconds: seconds, preferredTimescale: 600)
         player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
         clock.currentTime = seconds
+    }
+
+    private func seekAndPause(to target: CMTime) {
+        player.pause()
+        isPlaying = false
+        shuttleDirection = 0
+        shuttleMultiplier = 1
+        frameStepTarget = nil
+        frameStepIndex = nil
+
+        let targetSeconds = max(0, target.seconds.isFinite ? target.seconds : 0)
+        clock.currentTime = targetSeconds
+        player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero) { finished in
+            guard finished else { return }
+            Task { @MainActor in
+                self.clock.currentTime = targetSeconds
+            }
+        }
     }
 
     private func refreshFrameDuration(for item: AVPlayerItem) {
@@ -392,11 +531,20 @@ struct ReviewView: View {
                 let tracks = try await item.asset.loadTracks(withMediaType: .video)
                 guard let videoTrack = tracks.first else { return }
                 let nominalFrameRate = try await videoTrack.load(.nominalFrameRate)
-                let fps = nominalFrameRate > 0 ? Double(nominalFrameRate) : 24
-                let detectedFrameDuration = CMTime(seconds: 1 / fps, preferredTimescale: 600)
+                let minFrameDuration = try await videoTrack.load(.minFrameDuration)
+                let detectedFrameDuration: CMTime
+                if minFrameDuration.isValid && minFrameDuration.isNumeric && minFrameDuration.seconds > 0 {
+                    detectedFrameDuration = minFrameDuration
+                } else {
+                    let fps = nominalFrameRate > 0 ? Double(nominalFrameRate) : 24
+                    detectedFrameDuration = CMTime(seconds: 1 / fps, preferredTimescale: 60000)
+                }
                 await MainActor.run {
                     guard player.currentItem === item else { return }
                     frameDuration = detectedFrameDuration
+                    if player.currentTime() < detectedFrameDuration {
+                        seekToStart()
+                    }
                 }
             } catch {
                 await MainActor.run {
@@ -405,6 +553,34 @@ struct ReviewView: View {
                 }
             }
         }
+    }
+
+    private var minimumReviewFrameIndex: Int { 1 }
+
+    private func frameIndex(for time: CMTime) -> Int {
+        guard frameDuration.isNumeric, frameDuration.seconds > 0, time.isNumeric else {
+            return minimumReviewFrameIndex
+        }
+        return clampedFrameIndex(Int((time.seconds / frameDuration.seconds).rounded()))
+    }
+
+    private func clampedFrameIndex(_ index: Int) -> Int {
+        min(max(index, minimumReviewFrameIndex), maximumReviewFrameIndex)
+    }
+
+    private var maximumReviewFrameIndex: Int {
+        guard let duration = player.currentItem?.duration,
+              duration.isNumeric,
+              frameDuration.isNumeric,
+              frameDuration.seconds > 0
+        else {
+            return minimumReviewFrameIndex
+        }
+        return max(minimumReviewFrameIndex, Int((duration.seconds / frameDuration.seconds).rounded(.down)) - 1)
+    }
+
+    private func time(forFrameIndex index: Int) -> CMTime {
+        CMTimeMultiply(frameDuration, multiplier: Int32(clampedFrameIndex(index)))
     }
 }
 
@@ -437,7 +613,7 @@ struct RevisionTypePickerSheet: View {
             }
 
             LazyVGrid(columns: columns, spacing: 12) {
-                ForEach(ReviewRevisionType.allCases) { type in
+                ForEach(ReviewRevisionType.pickerCases) { type in
                     Button {
                         onChoose(type)
                     } label: {
@@ -595,6 +771,10 @@ struct ReviewRevisionCard: View {
                 .textFieldStyle(.roundedBorder)
         case .removeClip:
             Label("This mark requests deleting the source clip from the final assembly.", systemImage: "trash")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .thumbnail:
+            Label("Export this exact frame as a full-resolution 1920x1080 PNG thumbnail background for YouTube.", systemImage: "photo")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

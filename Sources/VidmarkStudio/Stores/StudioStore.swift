@@ -30,6 +30,7 @@ final class StudioStore: ObservableObject {
             "video-generations/approved",
             "masters/drafts",
             "masters/final",
+            "masters/shorts",
             "audio/stems",
             "audio/mix",
             "assembly/manifests",
@@ -94,7 +95,12 @@ final class StudioStore: ObservableObject {
     func startNewReview() {
         reviewMarks.removeAll()
         removeGeneratedReviewOutputs()
-        status = "Started a clean review. Marks and generated packets were cleared."
+        sidecar = EpisodeSidecar()
+        assembly = AssemblySettings()
+        episodeFolderURL = nil
+        masterVideoURL = nil
+        selectedSection = .review
+        status = "Started a clean review. Project state, selected master, marks, and generated packets were cleared."
     }
 
     private func writeReviewPackage() throws -> (jsonURL: URL, markdownURL: URL, markdown: String) {
@@ -273,6 +279,7 @@ struct ReviewPackage: Codable {
             "- Visual edits remain hard cuts only.",
             "- Audio uses hard cuts aligned to visual edits, with loudness normalization and peak control.",
             "- Speed correction is allowed only for marks that explicitly request it.",
+            "- Thumbnail marks request a full-resolution 1920x1080 PNG still exported from the exact marked frame.",
             "",
             "## Marks",
             "",

@@ -384,7 +384,7 @@ def assemble(manifest_path: Path) -> tuple[Path, dict[str, Any]]:
 
     report = {
         "tool": "VIDMARK STUDIO Assembler",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "manifest": str(manifest_path),
         "output": str(output),
         "settings": {
