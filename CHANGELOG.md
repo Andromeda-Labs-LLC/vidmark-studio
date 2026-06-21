@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.2.5
+
+- Replaced the macOS app icon with a higher-contrast classic 35mm cinema camera mark on a white background.
+- Regenerated the full iconset and `.icns` bundle asset for the local macOS app.
+
 ## v0.2.4
 
 - Synced the packaged macOS app bundle version with the current Vidmark Studio build.
